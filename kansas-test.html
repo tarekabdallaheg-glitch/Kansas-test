@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>اختبار المزامنة - KANSAS</title>
+<style>
+body{font-family:Arial,Tahoma,sans-serif;background:#f4f6f8;color:#1d2630;margin:0;padding:16px}
+.box{max-width:480px;margin:0 auto;background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+input{width:100%;padding:11px;border-radius:10px;border:1px solid #d0d7de;font-size:15px;margin:6px 0 10px;box-sizing:border-box}
+button{width:100%;padding:12px;border:0;border-radius:12px;background:#F5B800;font-weight:bold;font-size:15px;margin:6px 0;cursor:pointer}
+button.sec{background:#e8ecf0}
+.res{margin-top:12px;padding:10px;border-radius:10px;background:#f4f6f8;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.ok{color:#2e7d32;font-weight:bold}.bad{color:#c62828;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>اختبار الاتصال بالسحابة</h2>
+  <div id="who" style="font-size:13px;color:#6b7785">غير مسجل دخول</div>
+  <label>الإيميل</label>
+  <input id="email" type="email" placeholder="tarek@admin.com">
+  <label>الباسورد (اكتبه في الصفحة بس، ما تبعتهوش لأي حد)</label>
+  <input id="pass" type="password">
+  <button id="btnLogin">دخول</button>
+  <button class="sec" id="btnLogout">خروج</button>
+  <hr>
+  <button id="btnWrite">1) اختبار الكتابة (رقم جديد)</button>
+  <button id="btnRead">2) اختبار القراءة</button>
+  <button class="sec" id="btnDenied">3) اختبار المنع (محاولة كتابة)</button>
+  <div id="out" class="res">النتايج هتظهر هنا.</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCvbeR9xSN7PsOy_F4uPi4iGS2HoGBTeT4",
+  authDomain: "my-power-1d1eb.firebaseapp.com",
+  projectId: "my-power-1d1eb",
+  storageBucket: "my-power-1d1eb.firebasestorage.app",
+  messagingSenderId: "251799413902",
+  appId: "1:251799413902:web:43798fce64e6b9a0b5d5df"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const REF = doc(db, 'test', 'ping');
+const out = document.getElementById('out');
+
+function show(ok, msg){
+  out.innerHTML = (ok ? '<span class="ok">✔ نجح</span>\n' : '<span class="bad">✘ فشل</span>\n') + msg;
+}
+function errText(e){ return (e && (e.code || e.message)) || 'خطأ غير معروف'; }
+
+onAuthStateChanged(auth, u => {
+  document.getElementById('who').textContent = u ? 'مسجل دخول: ' + u.email : 'غير مسجل دخول';
+});
+
+async function doLogin(){
+  try{
+    await signInWithEmailAndPassword(auth, document.getElementById('email').value.trim(), document.getElementById('pass').value);
+    show(true, 'تم تسجيل الدخول.');
+  }catch(e){ show(false, 'الدخول فشل: ' + errText(e)); }
+}
+async function doLogout(){ await signOut(auth); show(true, 'تم الخروج.'); }
+
+async function testWrite(){
+  if(!auth.currentUser) return show(false, 'سجل دخول الأول.');
+  const value = Date.now();
+  try{
+    await setDoc(REF, { value, by: auth.currentUser.email, at: new Date().toISOString() });
+    show(true, 'اتكتب الرقم: ' + value + '\nعلى الجهاز التاني اضغط "اختبار القراءة" وشوف نفس الرقم.');
+  }catch(e){ show(false, 'الكتابة اترفضت: ' + errText(e)); }
+}
+
+async function testRead(){
+  if(!auth.currentUser) return show(false, 'سجل دخول الأول.');
+  try{
+    const s = await getDoc(REF);
+    if(!s.exists()) return show(false, 'مفيش بيانات. اكتب رقم الأول من الجهاز الكمبيوتر.');
+    const d = s.data();
+    show(true, 'الرقم: ' + d.value + '\nاتكتب بواسطة: ' + d.by + '\nالوقت: ' + d.at);
+  }catch(e){ show(false, 'القراءة فشلت: ' + errText(e)); }
+}
+
+async function testDenied(){
+  if(!auth.currentUser) return show(false, 'سجل دخول الأول.');
+  const isWriter = auth.currentUser.email === 'tarek@admin.com';
+  try{
+    await setDoc(REF, { value: -1, by: auth.currentUser.email, at: 'denied-test' });
+    show(isWriter, isWriter ? 'حساب الكتابة اتكتب له، وده متوقع.' : 'تحذير: حساب القراءة قدر يكتب! القواعد مش شغالة.');
+  }catch(e){
+    show(!isWriter, isWriter ? 'حساب الكتابة اترفض، ده مش متوقع. راجع القواعد.' : 'المنع شغال: حساب القراءة اترفض في الكتابة. ✔\n(' + errText(e) + ')');
+  }
+}
+
+document.getElementById('btnLogin').addEventListener('click', doLogin);
+document.getElementById('btnLogout').addEventListener('click', doLogout);
+document.getElementById('btnWrite').addEventListener('click', testWrite);
+document.getElementById('btnRead').addEventListener('click', testRead);
+document.getElementById('btnDenied').addEventListener('click', testDenied);
+window.__fbReady = true;
+</script>
+<script>
+setTimeout(function(){
+  if(!window.__fbReady){
+    var o=document.getElementById('out');
+    o.innerHTML='<span class="bad">✘ ما اتحملش Firebase.</span>\nاتأكد من النت، وافتح الصفحة من رابط GitHub Pages أو من localhost (مش من ملف مباشر)، وبعدين اعمل Refresh.';
+  }
+}, 6000);
+</script>
+</body>
+</html>
